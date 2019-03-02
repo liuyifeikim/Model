@@ -43,6 +43,13 @@ ts_s <- ts_s %>% mutate(sd_arpu = apply(select(., starts_with("arpu")), 1, sd, n
                         sd_mou = apply(select(., starts_with("mou")), 1, sd, na.rm = T),
                         sd_zt = apply(select(., starts_with("zt")), 1, sd, na.rm = T)) #特定列标准差
 
+#多条件分组，不用ifelse
+value_2010_other %>% 
+  mutate(age_group = case_when(A1 == "14岁及以下" ~ "95后",
+                               A1 == "24——30岁" ~ "80后",
+                               A1 %in% c("31——35岁", "35岁以上") ~ "70后"))
+
+
 
 #选择样本
 app <- app %>% filter(Category != "1.9")
