@@ -325,3 +325,24 @@ com_fun <- function(data, var){
   group_r %>% left_join(group_python) -> result
   return(result)
 }
+com_fun2 <- function(data, var, r_var, python_var){
+  var_en <- enquo(var)
+  r_var_en <- enquo(r_var)
+  python_var_en <- enquo(python_var)
+  data %>% select(!!r_var_en, !!python_var_en, !!var_en) %>% 
+    filter(!is.na(!!var_en)) %>% 
+    gather(key = tool, value = yn, c(!!r_var_en, !!python_var_en)) %>% 
+    filter(yn == "yes") %>% 
+    mutate(tool = if_else(tool == "now_r" , "r", "python")) -> long_data
+  return(long_data)
+}
+com_fun2(sf_rp, AssessJob4, now_r, now_python) -> result_4
+
+
+#与ggplot有关的自定义函数
+com_fun_plot2 <- function(data, xvar = "group", yvar = "score"){
+  ggplot(data, aes_string(x = xvar, y = yvar)) +
+    geom_boxplot() -> result_plot
+  return(result_plot)
+}
+com_fun_plot2(result_4, "tool", "AssessJob4") #要用引号才能输出结果
