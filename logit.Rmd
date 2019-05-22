@@ -1,0 +1,114 @@
+---
+title: "Logit"
+output: html_notebook
+---
+
+```{r}
+library(magrittr)
+```
+
+```{r}
+mydata <- read.csv("https://stats.idre.ucla.edu/stat/data/binary.csv")
+summary(mydata)
+str(mydata)
+table(mydata$admit)
+```
+
+```{r}
+mydata$admit <- factor(mydata$admit, levels = c(0, 1), labels = c("no", "yes"))
+table(mydata$admit)
+```
+
+```{r}
+mylogit <- glm(admit ~ gre + gpa + rank, data = mydata, family = "binomial")
+summary(mylogit)
+```
+
+```{r}
+exp(coefficients(mylogit))  #输出偶值比
+```
+
+```{r}
+y_pred_log <- predict(mylogit, mydata) #输出log(odds)
+y_pred_p <- predict(mylogit, mydata, type = "response") #输出预测概率p
+
+#用y_pred_log换算为y_pred_p
+odds <- exp(y_pred_log) #odds:p/(1-p)
+p <- odds / (1 + odds)
+table(p == y_pred_p) #全部相等
+table((p / (1 - p)) == odds) #不全部相等
+table(round((p / (1 - p)), 2) == round(odds, 2)) #保留两位小数后完全相等
+
+#用y_pred_p换算为y_pred_log
+odds_2 <- y_pred_p / (1 - y_pred_p)
+log_odds <- log(odds_2)
+table(log_odds == y_pred_log) #不全相等，但实际上数值相等
+table(round(log_odds, 2) == round(y_pred_log, 2)) #保留两位小数后完全相等
+```
+
+```{r}
+y_pred_p[1:20]
+```
+
+#对比测试
+```{r}
+library(tidyverse)
+library(caret)
+```
+
+```{r}
+#预处理
+adult <- read_csv("D:/K/DATA EXERCISE/Kaggle/adult.csv")
+adult
+adult %>% 
+  select(age, education.num, race, sex, hours.per.week, income) -> adult_model
+adult_model %>% 
+  mutate(income_f = as.factor(income),
+         income_i = if_else(income == "<=50K", 0, 1)) -> adult_model
+adult_model
+```
+
+```{r}
+#划分数据集
+set.seed(100)
+train_id <- createDataPartition(adult_model$income, p = 0.7)$Resample1
+adult_train <- adult_model[train_id,]
+adult_test <- adult_model[-train_id,]
+adult_train %>% select(income) %>% table() %>% prop.table()
+adult_test %>% select(income) %>% table() %>% prop.table()
+adult_model %>% select(income) %>% table() %>% prop.table()
+```
+
+
+```{r}
+#回归模型
+logit_model_1 <- glm(income_f ~ age + education.num + race + sex + hours.per.week, data = adult_train, family = "binomial")
+logit_model_2 <- glm(income_i ~ age + education.num + race + sex + hours.per.week, data = adult_train, family = "binomial")
+summary(logit_model_1)
+summary(logit_model_2)
+```
+
+```{r}
+#性能评估
+pred_1 <- predict(logit_model_1, adult_test, type = "response")
+adult_test$pred <- pred_1
+adult_test$pred_class <- if_else(pred_1 > 0.24, 1, 0)
+adult_test
+
+#混淆矩阵
+confusionMatrix(adult_test$pred_class, adult_test$income_i, positive = "1", mode = "prec_recall")
+
+#提升度
+adult_test %>% 
+  mutate(rank_group = BurStMisc::ntile(pred, 20, reverse = TRUE, result = "numeric"), #20等分
+         positive_real_sum = sum(income_i)) %>% 
+  select(income_i, pred, pred_class, rank_group, positive_real_sum) %>% 
+  group_by(rank_group) %>% 
+  summarise(total = n(), #每组总数
+            positive = sum(pred_class), #每组正样本数
+            ming = positive / total) %>%  #每组命中率
+  ungroup() %>% 
+  mutate(fugai = positive / sum(positive),  #每组覆盖度
+         lift = ming / (sum(positive) / sum(total))) #每组提升度
+```
+
