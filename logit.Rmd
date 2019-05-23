@@ -64,16 +64,29 @@ adult %>%
   select(age, education.num, race, sex, hours.per.week, income) -> adult_model
 adult_model %>% 
   mutate(income_f = as.factor(income),
-         income_i = if_else(income == "<=50K", 0, 1)) -> adult_model
+         income_i = if_else(income == "<=50K", 0, 1),
+         income_i_r = if_else(income == "<=50K", 1, 0)) -> adult_model
 adult_model
 ```
 
+#统计描述
 ```{r}
+adult_model %>% count(sex)
+adult_model %>% count(race)
+adult_model %>% count(income)
+adult_model %>% summarise(min_age = min(age), max_age = max(age), mean_age = mean(age), sd_age = sd(age))
+```
+
 #划分数据集
+```{r}
 set.seed(100)
 train_id <- createDataPartition(adult_model$income, p = 0.7)$Resample1
 adult_train <- adult_model[train_id,]
 adult_test <- adult_model[-train_id,]
+dim(adult_train)
+dim(adult_test)
+adult_train
+adult_test
 adult_train %>% select(income) %>% table() %>% prop.table()
 adult_test %>% select(income) %>% table() %>% prop.table()
 adult_model %>% select(income) %>% table() %>% prop.table()
@@ -84,31 +97,90 @@ adult_model %>% select(income) %>% table() %>% prop.table()
 #回归模型
 logit_model_1 <- glm(income_f ~ age + education.num + race + sex + hours.per.week, data = adult_train, family = "binomial")
 logit_model_2 <- glm(income_i ~ age + education.num + race + sex + hours.per.week, data = adult_train, family = "binomial")
+logit_model_3 <- glm(income_i_r ~ age + education.num + race + sex + hours.per.week, data = adult_train, family = "binomial")
 summary(logit_model_1)
 summary(logit_model_2)
+summary(logit_model_3)
 ```
 
-```{r}
 #性能评估
-pred_1 <- predict(logit_model_1, adult_test, type = "response")
-adult_test$pred <- pred_1
-adult_test$pred_class <- if_else(pred_1 > 0.24, 1, 0)
-adult_test
-
+```{r}
 #混淆矩阵
-confusionMatrix(adult_test$pred_class, adult_test$income_i, positive = "1", mode = "prec_recall")
-
-#提升度
+pred_1 <- predict(logit_model_1, adult_test, type = "response")
 adult_test %>% 
-  mutate(rank_group = BurStMisc::ntile(pred, 20, reverse = TRUE, result = "numeric"), #20等分
+  mutate(pred = pred_1,
+         pred_class_24 = if_else(pred_1 > 0.24, 1, 0),
+         pred_class_50 = if_else(pred_1 > 0.50, 1, 0)) -> adult_test
+adult_test
+confusionMatrix(adult_test$pred_class_24, adult_test$income_i, positive = "1", mode = "prec_recall")
+confusionMatrix(adult_test$pred_class_50, adult_test$income_i, positive = "1", mode = "prec_recall")
+
+pred_3 <- predict(logit_model_3, adult_test, type = "response")
+adult_test %>% 
+  mutate(pred_r = pred_3,
+         pred_class_r_76 = if_else(pred_r > 0.76, 1, 0),
+         pred_class_r_50 = if_else(pred_r > 0.50, 1, 0)) -> adult_test
+adult_test
+confusionMatrix(adult_test$pred_class_r_76, adult_test$income_i_r, positive = "1", mode = "prec_recall")
+confusionMatrix(adult_test$pred_class_r_50, adult_test$income_i_r, positive = "1", mode = "prec_recall")
+```
+
+```{r, fig.width=15, fig.height=8}
+#提升度:非累计
+adult_test %>% 
+  mutate(rank_group = BurStMisc::ntile(pred, 10, reverse = TRUE, result = "numeric"), #20等分
          positive_real_sum = sum(income_i)) %>% 
-  select(income_i, pred, pred_class, rank_group, positive_real_sum) %>% 
+  select(income_i, pred, pred_class_24, rank_group, positive_real_sum) %>% 
   group_by(rank_group) %>% 
-  summarise(total = n(), #每组总数
-            positive = sum(pred_class), #每组正样本数
-            ming = positive / total) %>%  #每组命中率
+  summarise(total = n(),
+            positive = sum(income_i == 1),
+            ming = positive / total) %>%                                #每组命中率
   ungroup() %>% 
-  mutate(fugai = positive / sum(positive),  #每组覆盖度
-         lift = ming / (sum(positive) / sum(total))) #每组提升度
+  mutate(fugai = positive / sum(positive),                              #每组覆盖度
+         lift = ming / (sum(positive) / sum(total))) -> adult_test_lift_24 #每组提升度
+adult_test_lift_24 %>% 
+  ggplot(aes(rank_group, lift)) +
+  geom_point() +
+  geom_line() +
+  scale_x_continuous(breaks = seq(1, 10, 1)) +
+  theme(panel.grid.minor = element_blank())
+
+adult_test %>% 
+  mutate(rank_group = BurStMisc::ntile(pred_r, 10, reverse = TRUE, result = "numeric"), #20等分
+         positive_real_sum = sum(income_i_r)) %>% 
+  select(income_i_r, pred_r, pred_class_r_50, rank_group, positive_real_sum) %>% 
+  group_by(rank_group) %>% 
+  summarise(total = n(),
+            positive = sum(income_i_r == 1),
+            ming = positive / total) %>%                                #每组命中率
+  ungroup() %>% 
+  mutate(fugai = positive / sum(positive),                              #每组覆盖度
+         lift = ming / (sum(positive) / sum(total))) -> adult_test_lift_r_50 #每组提升度
+adult_test_lift_r_50
+adult_test_lift_r_50 %>% 
+  ggplot(aes(rank_group, lift)) +
+  geom_point() +
+  geom_line() +
+  scale_x_continuous(breaks = seq(1, 10, 1)) +
+  theme(panel.grid.minor = element_blank())
+```
+
+```{r, fig.width=15, fig.height=5}
+#累计提升度
+adult_test_lift_r_50 %>% 
+  mutate(cum_total = cumsum(total),
+         cum_positive = cumsum(positive),
+         cum_ming = cum_positive / cum_total,
+         cum_fugai = cum_positive / sum(positive),
+         cum_lift = cum_ming / (sum(positive) / sum(total))) -> adult_test_lift_r_50_cum
+adult_test_lift_r_50_cum %>% 
+  ggplot(aes(rank_group, cum_lift)) +
+  geom_point() +
+  geom_line() +
+  scale_x_continuous(breaks = seq(1, 10, 1)) +
+  scale_y_continuous(limits = c(0.0, 1.5), breaks = seq(0.0, 1.5, 0.1)) +
+  labs(x = "分组", y = "累计提升度") +
+  theme(panel.grid = element_blank()) +
+  theme_classic()
 ```
 
