@@ -211,3 +211,18 @@ game_dist$lang <- as.factor(game_dist$lang)
 game_dist_daisy <- daisy(game_dist, metric = "gower")
 game_dist_daisy %>% head()
 str(game_dist_daisy)
+
+#计算时间长度
+mutate(prop = as.numeric(prop),
+       end_time = as.Date(end_time),
+       target = as.numeric(target),
+       money = as.numeric(money),
+       support = as.numeric(support),
+       time = as.numeric(difftime(end_time, scr_time, units = "days"))) %>%  #计算时间差度
+  select(-c(link, img_link)) -> gy_df_c
+
+#将长数据变为每行有效列数不同的宽数据
+library(splitstackshape)
+library(tidyverse)
+df1 <- read_csv("long_wide.csv")
+dcast(getanID(df1, 'time'), time~.id, value.var='value') #time为不变的变量名(如ID),value.var 为要填充到每行的变量
