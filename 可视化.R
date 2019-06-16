@@ -149,6 +149,16 @@ ggplot(aes(reorder(word2, contribution), contribution, fill = contribution > 0))
   ylab("Sentiment score * number of occurrences") +
   coord_flip() #正负分数柱状图
 
+gy_df_c %>%
+  filter(!is.na(target)) %>% 
+  mutate(target_fz = case_when(target <= 10000 ~ "1万及以下",
+                               target > 10000 & target <= 100000 ~ "1-10万",
+                               target > 100000 & target <= 1000000 ~ "10-100万",
+                               target > 1000000 & target <= 10000000 ~ "100-1000万",
+                               target > 10000000 ~ "1000万以上")) %>%
+  mutate(target_fz = factor(target_fz, levels = c("1万及以下", "1-10万", "10-100万", "100-1000万", "1000万以上"))) %>%
+  ggplot(aes(target_fz, ..prop.., group = 1)) +  #y轴为比例
+  geom_bar()
 ##############################################################
 
 #散点图
@@ -266,3 +276,6 @@ ggraph(bigram_graph, layout = "fr") +
   geom_edge_link() +
   geom_node_point() +
   geom_node_text(aes(label = name), vjust = 1, hjust = 1)
+
+#双类别变量分布点图
+ggplot(list, aes(type,organ_type)) + geom_count()
